@@ -6,10 +6,12 @@ use std::sync::Mutex;
 use crate::operative::{Operative, OperativeError};
 
 /// Mock operative for testing. Returns configurable outcomes per task name.
+/// Tracks executed tasks for verification.
 pub struct MockOperative {
     task_types: Vec<TaskType>,
     outcomes: Mutex<HashMap<String, TaskOutcome>>,
     default_outcome: TaskOutcome,
+    executed: Mutex<HashMap<String, TaskDefinition>>,
 }
 
 impl MockOperative {
@@ -20,7 +22,9 @@ impl MockOperative {
             default_outcome: TaskOutcome::Completed {
                 output: vec![],
                 result_ref: None,
+                data: None,
             },
+            executed: Mutex::new(HashMap::new()),
         }
     }
 
@@ -29,6 +33,12 @@ impl MockOperative {
             .lock()
             .unwrap()
             .insert(task_name.to_string(), outcome);
+    }
+
+    /// Returns the TaskDefinition that was passed to execute() for a given task name.
+    /// Useful for verifying input_from resolution merged params correctly.
+    pub fn last_executed(&self, task_name: &str) -> Option<TaskDefinition> {
+        self.executed.lock().unwrap().get(task_name).cloned()
     }
 }
 
@@ -39,6 +49,11 @@ impl Operative for MockOperative {
     }
 
     async fn execute(&self, task: &TaskDefinition) -> Result<TaskOutcome, OperativeError> {
+        self.executed
+            .lock()
+            .unwrap()
+            .insert(task.name.clone(), task.clone());
+
         let outcomes = self.outcomes.lock().unwrap();
         Ok(outcomes
             .get(&task.name)
@@ -59,6 +74,7 @@ mod tests {
             task_type: TaskType::new("work").unwrap(),
             depends_on: vec![],
             params: Default::default(),
+            input_from: Default::default(),
             timeout_secs: None,
             max_retries: None,
         };
@@ -83,6 +99,7 @@ mod tests {
             task_type: TaskType::new("work").unwrap(),
             depends_on: vec![],
             params: Default::default(),
+            input_from: Default::default(),
             timeout_secs: None,
             max_retries: None,
         };
@@ -95,5 +112,23 @@ mod tests {
             }
             _ => panic!("expected Failed"),
         }
+    }
+
+    #[tokio::test]
+    async fn tracks_executed_tasks() {
+        let op = MockOperative::new(vec![TaskType::new("work").unwrap()]);
+        let task = TaskDefinition {
+            name: "tracked".to_string(),
+            task_type: TaskType::new("work").unwrap(),
+            depends_on: vec![],
+            params: Default::default(),
+            input_from: Default::default(),
+            timeout_secs: None,
+            max_retries: None,
+        };
+
+        op.execute(&task).await.unwrap();
+        let recorded = op.last_executed("tracked").unwrap();
+        assert_eq!(recorded.name, "tracked");
     }
 }

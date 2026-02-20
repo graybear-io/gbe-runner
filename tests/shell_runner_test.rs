@@ -108,6 +108,25 @@ async fn cli_runs_fixture() {
 }
 
 #[tokio::test]
+async fn input_wiring_resolves_across_tasks() {
+    let def = load_fixture("input-wiring.yaml");
+    let results = run_job(&def, shell_operative()).await.unwrap();
+
+    let mut names: Vec<String> = results.iter().map(|(n, _)| n.clone()).collect();
+    names.sort();
+    assert_eq!(names, vec!["consume", "produce"]);
+
+    // Verify consume received the resolved URL
+    let consume_outcome = results.iter().find(|(n, _)| n == "consume").unwrap();
+    match &consume_outcome.1 {
+        gbe_jobs_domain::TaskOutcome::Completed { output, .. } => {
+            assert_eq!(output, &["fetching https://example.com"]);
+        }
+        _ => panic!("expected Completed"),
+    }
+}
+
+#[tokio::test]
 async fn cli_exits_nonzero_on_failure() {
     let fixture = format!(
         "{}/fixtures/fail-fast.yaml",

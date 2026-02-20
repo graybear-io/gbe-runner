@@ -1,0 +1,16 @@
+v: 1
+name: "Input Wiring"
+job_type: "shell"
+tasks:
+  - name: "produce"
+    task_type: "shell"
+    params:
+      command: "echo '{\"url\":\"https://example.com\",\"count\":42}'"
+
+  - name: "consume"
+    task_type: "shell"
+    depends_on: ["produce"]
+    input_from:
+      SOURCE_URL: "produce.url"
+    params:
+      command: "echo fetching $SOURCE_URL"
