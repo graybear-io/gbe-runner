@@ -1,0 +1,15 @@
+v: 1
+name: "HTTP Pipeline"
+job_type: "mixed"
+tasks:
+  - name: "resolve-target"
+    task_type: "shell"
+    params:
+      command: "echo '{\"url\":\"https://httpbin.org/get\"}'"
+
+  - name: "fetch"
+    task_type: "http"
+    depends_on: ["resolve-target"]
+    input_from:
+      url: "resolve-target.url"
+    params: {}

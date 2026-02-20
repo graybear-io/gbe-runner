@@ -1,6 +1,6 @@
 use clap::Parser;
 use gbe_jobs_domain::JobDefinition;
-use gbe_operative::{run_job, CompositeOperative, DriverError, ShellOperative};
+use gbe_operative::{run_job, CompositeOperative, DriverError, HttpOperative, ShellOperative};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -54,7 +54,8 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let operative = Arc::new(CompositeOperative::from_operatives(vec![shell]));
+    let http = Arc::new(HttpOperative::for_types(&["http"]).unwrap());
+    let operative = Arc::new(CompositeOperative::from_operatives(vec![shell, http]));
 
     match run_job(&def, operative).await {
         Ok(results) => {
