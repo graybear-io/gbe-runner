@@ -25,12 +25,14 @@ impl MoleculeOperative {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns `JobsDomainError` if any type string is invalid.
     pub fn for_types(
         types: &[&str],
         delegate: Arc<dyn Operative>,
     ) -> Result<Self, gbe_jobs_domain::JobsDomainError> {
-        let task_types: Result<Vec<TaskType>, _> =
-            types.iter().map(|t| TaskType::new(t)).collect();
+        let task_types: Result<Vec<TaskType>, _> = types.iter().map(|t| TaskType::new(t)).collect();
         Ok(Self::new(task_types?, delegate))
     }
 

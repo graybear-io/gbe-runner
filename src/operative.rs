@@ -18,7 +18,7 @@ pub enum OperativeError {
 /// claims work from the queue, decides *how* to run it, and reports outcomes.
 ///
 /// The operative is stateless — everything it needs comes from the
-/// TaskDefinition (via the bus event or a KV lookup). It interprets
+/// `TaskDefinition` (via the bus event or a KV lookup). It interprets
 /// `params` according to the task types it handles.
 #[async_trait]
 pub trait Operative: Send + Sync {

@@ -37,13 +37,13 @@ pub enum DriverError {
     },
 }
 
-/// Result of one task within the JoinSet.
+/// Result of one task within the `JoinSet`.
 struct TaskCompletion {
     name: String,
     result: Result<TaskOutcome, OperativeError>,
 }
 
-/// Build structured data from a TaskOutcome for downstream consumption.
+/// Build structured data from a `TaskOutcome` for downstream consumption.
 fn outcome_to_data(outcome: &TaskOutcome) -> Option<serde_json::Value> {
     match outcome {
         TaskOutcome::Completed { output, data, .. } => {
@@ -51,7 +51,10 @@ fn outcome_to_data(outcome: &TaskOutcome) -> Option<serde_json::Value> {
                 Some(d.clone())
             } else {
                 Some(serde_json::Value::Array(
-                    output.iter().map(|l| serde_json::Value::String(l.clone())).collect(),
+                    output
+                        .iter()
+                        .map(|l| serde_json::Value::String(l.clone()))
+                        .collect(),
                 ))
             }
         }
@@ -60,7 +63,7 @@ fn outcome_to_data(outcome: &TaskOutcome) -> Option<serde_json::Value> {
 }
 
 /// Resolve `input_from` references against completed task outputs.
-/// Returns a new TaskParams with resolved values merged in.
+/// Returns a new `TaskParams` with resolved values merged in.
 fn resolve_inputs(
     task: &TaskDefinition,
     outcome_data: &HashMap<String, serde_json::Value>,
@@ -71,23 +74,22 @@ fn resolve_inputs(
         let parts: Vec<&str> = ref_str.splitn(2, '.').collect();
         let source_task = parts[0];
 
-        let data = outcome_data.get(source_task).ok_or_else(|| {
-            DriverError::InputResolution {
+        let data = outcome_data
+            .get(source_task)
+            .ok_or_else(|| DriverError::InputResolution {
                 task: task.name.clone(),
                 reference: ref_str.clone(),
                 reason: "source task has no data".to_string(),
-            }
-        })?;
+            })?;
 
         let value = if parts.len() > 1 {
             let pointer = format!("/{}", parts[1].replace('.', "/"));
-            data.pointer(&pointer).ok_or_else(|| {
-                DriverError::InputResolution {
+            data.pointer(&pointer)
+                .ok_or_else(|| DriverError::InputResolution {
                     task: task.name.clone(),
                     reference: ref_str.clone(),
                     reason: format!("path '{pointer}' not found"),
-                }
-            })?
+                })?
         } else {
             data
         };
@@ -103,7 +105,7 @@ fn resolve_inputs(
     Ok(params)
 }
 
-/// Prepare a TaskDefinition for dispatch: resolve input_from if present.
+/// Prepare a `TaskDefinition` for dispatch: resolve `input_from` if present.
 fn prepare_task(
     td: &TaskDefinition,
     outcome_data: &HashMap<String, serde_json::Value>,
@@ -117,11 +119,16 @@ fn prepare_task(
     Ok(resolved)
 }
 
-/// Run a job to completion using a SimpleOracle and an Operative.
+/// Run a job to completion using a `SimpleOracle` and an Operative.
 ///
-/// Dispatches ready tasks concurrently via JoinSet. Fail-fast on
+/// Dispatches ready tasks concurrently via `JoinSet`. Fail-fast on
 /// first task failure. Returns all successful outcomes on completion.
 /// Resolves `input_from` references before dispatching downstream tasks.
+///
+/// # Errors
+///
+/// Returns `DriverError` if a task fails, an operative errors, or
+/// input resolution cannot find a referenced field.
 pub async fn run_job(
     def: &JobDefinition,
     operative: Arc<dyn Operative>,
@@ -345,7 +352,9 @@ mod tests {
 
         let err = run_job(&linear_dag(), mock).await.unwrap_err();
         match err {
-            DriverError::TaskFailed { task, exit_code, .. } => {
+            DriverError::TaskFailed {
+                task, exit_code, ..
+            } => {
                 assert_eq!(task, "a");
                 assert_eq!(exit_code, 1);
             }
@@ -432,7 +441,10 @@ mod tests {
         );
 
         let mut input_from = HashMap::new();
-        input_from.insert("missing".to_string(), "producer.nonexistent.field".to_string());
+        input_from.insert(
+            "missing".to_string(),
+            "producer.nonexistent.field".to_string(),
+        );
 
         let def = JobDefinition {
             v: 1,

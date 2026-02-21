@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::operative::{Operative, OperativeError};
 
-/// Routes task execution to child operatives based on task_type.
+/// Routes task execution to child operatives based on `task_type`.
 ///
 /// Register one operative per task type. On `execute()`, looks up the
 /// child for that task's type and delegates. Returns an error if no
@@ -16,19 +16,21 @@ pub struct CompositeOperative {
 }
 
 impl CompositeOperative {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Register an operative for all task types it handles.
-    pub fn register(&mut self, operative: Arc<dyn Operative>) {
+    pub fn register(&mut self, operative: &Arc<dyn Operative>) {
         for tt in operative.handles() {
             self.children.insert(tt.clone(), operative.clone());
         }
     }
 
-    /// Build a CompositeOperative from a list of operatives.
-    pub fn from_operatives(operatives: Vec<Arc<dyn Operative>>) -> Self {
+    /// Build a `CompositeOperative` from a list of operatives.
+    #[must_use]
+    pub fn from_operatives(operatives: &[Arc<dyn Operative>]) -> Self {
         let mut composite = Self::new();
         for op in operatives {
             composite.register(op);
@@ -48,15 +50,12 @@ impl Operative for CompositeOperative {
     }
 
     async fn execute(&self, task: &TaskDefinition) -> Result<TaskOutcome, OperativeError> {
-        let child = self
-            .children
-            .get(&task.task_type)
-            .ok_or_else(|| {
-                OperativeError::Execution(format!(
-                    "no operative registered for task type '{}'",
-                    task.task_type
-                ))
-            })?;
+        let child = self.children.get(&task.task_type).ok_or_else(|| {
+            OperativeError::Execution(format!(
+                "no operative registered for task type '{}'",
+                task.task_type
+            ))
+        })?;
 
         child.execute(task).await
     }
@@ -102,19 +101,24 @@ mod tests {
             },
         );
 
-        let composite =
-            CompositeOperative::from_operatives(vec![shell_op.clone(), http_op.clone()]);
+        let composite = CompositeOperative::from_operatives(&[shell_op.clone(), http_op.clone()]);
 
-        let outcome_a = composite.execute(&task_of_type("task-a", "shell")).await.unwrap();
+        let outcome_a = composite
+            .execute(&task_of_type("task-a", "shell"))
+            .await
+            .unwrap();
         match outcome_a {
             TaskOutcome::Completed { output, .. } => assert_eq!(output, vec!["from-shell"]),
-            _ => panic!("expected Completed"),
+            TaskOutcome::Failed { .. } => panic!("expected Completed"),
         }
 
-        let outcome_b = composite.execute(&task_of_type("task-b", "http")).await.unwrap();
+        let outcome_b = composite
+            .execute(&task_of_type("task-b", "http"))
+            .await
+            .unwrap();
         match outcome_b {
             TaskOutcome::Completed { output, .. } => assert_eq!(output, vec!["from-http"]),
-            _ => panic!("expected Completed"),
+            TaskOutcome::Failed { .. } => panic!("expected Completed"),
         }
     }
 
@@ -134,7 +138,8 @@ mod tests {
     #[tokio::test]
     async fn tracks_execution_on_child() {
         let mock = Arc::new(MockOperative::new(vec![TaskType::new("work").unwrap()]));
-        let composite = CompositeOperative::from_operatives(vec![mock.clone()]);
+        let op: Arc<dyn Operative> = mock.clone();
+        let composite = CompositeOperative::from_operatives(&[op]);
 
         composite
             .execute(&task_of_type("tracked", "work"))

@@ -7,7 +7,6 @@ edition = "2021"
 gbe-jobs-domain = { path = "../gbe-nexus/crates/jobs-domain" }
 gbe-oracle = { path = "../gbe-oracle" }
 tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"

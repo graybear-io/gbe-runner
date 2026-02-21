@@ -414,7 +414,6 @@ dependencies = [
  "gbe-jobs-domain",
  "gbe-oracle",
  "reqwest",
- "serde",
  "serde_json",
  "serde_yaml",
  "thiserror",

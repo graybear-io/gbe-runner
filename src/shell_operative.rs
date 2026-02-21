@@ -8,12 +8,13 @@ use crate::operative::{Operative, OperativeError};
 /// Shell operative: reads `command` from task params and runs it directly.
 ///
 /// Expects `params.command` to contain the shell command string.
-/// Captures stdout lines and exit code, returns a TaskOutcome.
+/// Captures stdout lines and exit code, returns a `TaskOutcome`.
 pub struct ShellOperative {
     task_types: Vec<TaskType>,
 }
 
 impl ShellOperative {
+    #[must_use]
     pub fn new(task_types: Vec<TaskType>) -> Self {
         Self { task_types }
     }
@@ -21,9 +22,12 @@ impl ShellOperative {
     /// Create a shell operative that handles any task type.
     /// Uses a wildcard match — `handles()` returns the registered types,
     /// but callers can also check `can_handle()` for dynamic dispatch.
+    ///
+    /// # Errors
+    ///
+    /// Returns `JobsDomainError` if any type string is invalid.
     pub fn for_types(types: &[&str]) -> Result<Self, gbe_jobs_domain::JobsDomainError> {
-        let task_types: Result<Vec<TaskType>, _> =
-            types.iter().map(|t| TaskType::new(t)).collect();
+        let task_types: Result<Vec<TaskType>, _> = types.iter().map(|t| TaskType::new(t)).collect();
         Ok(Self::new(task_types?))
     }
 }
@@ -66,7 +70,10 @@ impl Operative for ShellOperative {
             let data = match serde_json::from_str::<serde_json::Value>(full_stdout.trim()) {
                 Ok(v) => Some(v),
                 Err(_) => Some(serde_json::Value::Array(
-                    stdout_lines.iter().map(|l| serde_json::Value::String(l.clone())).collect(),
+                    stdout_lines
+                        .iter()
+                        .map(|l| serde_json::Value::String(l.clone()))
+                        .collect(),
                 )),
             };
             Ok(TaskOutcome::Completed {
@@ -89,6 +96,7 @@ impl Operative for ShellOperative {
 mod tests {
     use super::*;
     use gbe_jobs_domain::{TaskDefinition, TaskParams, TaskType};
+    use std::collections::HashMap;
 
     fn task_with_command(name: &str, command: &str) -> TaskDefinition {
         let mut params = TaskParams::default();
@@ -100,7 +108,7 @@ mod tests {
             task_type: TaskType::new("shell").unwrap(),
             depends_on: vec![],
             params,
-            input_from: Default::default(),
+            input_from: HashMap::new(),
             timeout_secs: None,
             max_retries: None,
         }
@@ -142,7 +150,7 @@ mod tests {
             task_type: TaskType::new("shell").unwrap(),
             depends_on: vec![],
             params: TaskParams::default(),
-            input_from: Default::default(),
+            input_from: HashMap::new(),
             timeout_secs: None,
             max_retries: None,
         };
@@ -168,7 +176,10 @@ mod tests {
     #[tokio::test]
     async fn json_stdout_parsed_as_data() {
         let op = ShellOperative::for_types(&["shell"]).unwrap();
-        let task = task_with_command("test-json", r#"echo '{"url":"https://example.com","count":42}'"#);
+        let task = task_with_command(
+            "test-json",
+            r#"echo '{"url":"https://example.com","count":42}'"#,
+        );
 
         let outcome = op.execute(&task).await.unwrap();
         match outcome {
@@ -199,8 +210,12 @@ mod tests {
     #[tokio::test]
     async fn params_exposed_as_env_vars() {
         let mut params = TaskParams::default();
-        params.entries.insert("command".to_string(), "echo $MY_VAR".to_string());
-        params.entries.insert("MY_VAR".to_string(), "injected_value".to_string());
+        params
+            .entries
+            .insert("command".to_string(), "echo $MY_VAR".to_string());
+        params
+            .entries
+            .insert("MY_VAR".to_string(), "injected_value".to_string());
 
         let op = ShellOperative::for_types(&["shell"]).unwrap();
         let task = TaskDefinition {
@@ -208,7 +223,7 @@ mod tests {
             task_type: TaskType::new("shell").unwrap(),
             depends_on: vec![],
             params,
-            input_from: Default::default(),
+            input_from: HashMap::new(),
             timeout_secs: None,
             max_retries: None,
         };

@@ -15,6 +15,7 @@ pub struct MockOperative {
 }
 
 impl MockOperative {
+    #[must_use]
     pub fn new(task_types: Vec<TaskType>) -> Self {
         Self {
             task_types,
@@ -28,6 +29,9 @@ impl MockOperative {
         }
     }
 
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn set_outcome(&self, task_name: &str, outcome: TaskOutcome) {
         self.outcomes
             .lock()
@@ -35,8 +39,12 @@ impl MockOperative {
             .insert(task_name.to_string(), outcome);
     }
 
-    /// Returns the TaskDefinition that was passed to execute() for a given task name.
-    /// Useful for verifying input_from resolution merged params correctly.
+    /// Returns the `TaskDefinition` that was passed to `execute()` for a given task name.
+    /// Useful for verifying `input_from` resolution merged params correctly.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn last_executed(&self, task_name: &str) -> Option<TaskDefinition> {
         self.executed.lock().unwrap().get(task_name).cloned()
     }
@@ -65,6 +73,8 @@ impl Operative for MockOperative {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gbe_jobs_domain::TaskParams;
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn returns_default_outcome() {
@@ -73,8 +83,8 @@ mod tests {
             name: "test".to_string(),
             task_type: TaskType::new("work").unwrap(),
             depends_on: vec![],
-            params: Default::default(),
-            input_from: Default::default(),
+            params: TaskParams::default(),
+            input_from: HashMap::new(),
             timeout_secs: None,
             max_retries: None,
         };
@@ -98,8 +108,8 @@ mod tests {
             name: "fail-task".to_string(),
             task_type: TaskType::new("work").unwrap(),
             depends_on: vec![],
-            params: Default::default(),
-            input_from: Default::default(),
+            params: TaskParams::default(),
+            input_from: HashMap::new(),
             timeout_secs: None,
             max_retries: None,
         };
@@ -110,7 +120,7 @@ mod tests {
                 assert_eq!(exit_code, 1);
                 assert_eq!(error, "boom");
             }
-            _ => panic!("expected Failed"),
+            TaskOutcome::Completed { .. } => panic!("expected Failed"),
         }
     }
 
@@ -121,8 +131,8 @@ mod tests {
             name: "tracked".to_string(),
             task_type: TaskType::new("work").unwrap(),
             depends_on: vec![],
-            params: Default::default(),
-            input_from: Default::default(),
+            params: TaskParams::default(),
+            input_from: HashMap::new(),
             timeout_secs: None,
             max_retries: None,
         };

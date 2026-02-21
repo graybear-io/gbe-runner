@@ -20,13 +20,14 @@ const DEFAULT_TIMEOUT_SECS: u64 = 30;
 /// Uses `task.timeout_secs` if set, otherwise 30s default.
 ///
 /// On 2xx: returns Completed with structured data containing status, headers, body.
-/// On non-2xx: returns Failed with HTTP status code as exit_code.
+/// On non-2xx: returns Failed with HTTP status code as `exit_code`.
 pub struct HttpOperative {
     task_types: Vec<TaskType>,
     client: Client,
 }
 
 impl HttpOperative {
+    #[must_use]
     pub fn new(task_types: Vec<TaskType>) -> Self {
         Self {
             task_types,
@@ -34,9 +35,11 @@ impl HttpOperative {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns `JobsDomainError` if any type string is invalid.
     pub fn for_types(types: &[&str]) -> Result<Self, gbe_jobs_domain::JobsDomainError> {
-        let task_types: Result<Vec<TaskType>, _> =
-            types.iter().map(|t| TaskType::new(t)).collect();
+        let task_types: Result<Vec<TaskType>, _> = types.iter().map(|t| TaskType::new(t)).collect();
         Ok(Self::new(task_types?))
     }
 }
@@ -56,9 +59,8 @@ fn parse_method(s: &str) -> Result<Method, OperativeError> {
 }
 
 fn parse_headers(json_str: &str) -> Result<HashMap<String, String>, OperativeError> {
-    serde_json::from_str::<HashMap<String, String>>(json_str).map_err(|e| {
-        OperativeError::Execution(format!("invalid headers JSON: {e}"))
-    })
+    serde_json::from_str::<HashMap<String, String>>(json_str)
+        .map_err(|e| OperativeError::Execution(format!("invalid headers JSON: {e}")))
 }
 
 #[async_trait]
@@ -79,9 +81,7 @@ impl Operative for HttpOperative {
             None => Method::GET,
         };
 
-        let timeout = Duration::from_secs(
-            task.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS),
-        );
+        let timeout = Duration::from_secs(task.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS));
 
         debug!(task = %task.name, %url, %method, "executing HTTP request");
 
@@ -97,9 +97,10 @@ impl Operative for HttpOperative {
             req = req.body(body.clone());
         }
 
-        let response = req.send().await.map_err(|e| {
-            OperativeError::Execution(format!("HTTP request failed: {e}"))
-        })?;
+        let response = req
+            .send()
+            .await
+            .map_err(|e| OperativeError::Execution(format!("HTTP request failed: {e}")))?;
 
         let status = response.status().as_u16();
         let response_headers: serde_json::Value = serde_json::Value::Object(
@@ -109,17 +110,16 @@ impl Operative for HttpOperative {
                 .map(|(k, v)| {
                     (
                         k.to_string(),
-                        serde_json::Value::String(
-                            v.to_str().unwrap_or("<binary>").to_string(),
-                        ),
+                        serde_json::Value::String(v.to_str().unwrap_or("<binary>").to_string()),
                     )
                 })
                 .collect(),
         );
 
-        let body_text = response.text().await.map_err(|e| {
-            OperativeError::Execution(format!("failed to read response body: {e}"))
-        })?;
+        let body_text = response
+            .text()
+            .await
+            .map_err(|e| OperativeError::Execution(format!("failed to read response body: {e}")))?;
 
         if (200..300).contains(&status) {
             info!(task = %task.name, status, "HTTP request completed");
@@ -145,7 +145,7 @@ impl Operative for HttpOperative {
         } else {
             info!(task = %task.name, status, "HTTP request returned non-2xx");
             Ok(TaskOutcome::Failed {
-                exit_code: status as i32,
+                exit_code: i32::from(status),
                 error: body_text,
             })
         }
@@ -186,12 +186,15 @@ mod tests {
     #[tokio::test]
     async fn invalid_method_errors() {
         let op = HttpOperative::for_types(&["http"]).unwrap();
-        let task = http_task("bad-method", vec![
-            ("url", "http://localhost"),
-            ("method", "YEET"),
-        ]);
+        let task = http_task(
+            "bad-method",
+            vec![("url", "http://localhost"), ("method", "YEET")],
+        );
         let err = op.execute(&task).await.unwrap_err();
-        assert!(err.to_string().contains("unsupported HTTP method"), "got: {err}");
+        assert!(
+            err.to_string().contains("unsupported HTTP method"),
+            "got: {err}"
+        );
     }
 
     #[tokio::test]
@@ -207,9 +210,7 @@ mod tests {
             .await;
 
         let op = HttpOperative::for_types(&["http"]).unwrap();
-        let task = http_task("get-json", vec![
-            ("url", &format!("{}/data", server.uri())),
-        ]);
+        let task = http_task("get-json", vec![("url", &format!("{}/data", server.uri()))]);
 
         let outcome = op.execute(&task).await.unwrap();
         match outcome {
@@ -234,11 +235,14 @@ mod tests {
             .await;
 
         let op = HttpOperative::for_types(&["http"]).unwrap();
-        let task = http_task("post-body", vec![
-            ("url", &format!("{}/submit", server.uri())),
-            ("method", "POST"),
-            ("body", "hello world"),
-        ]);
+        let task = http_task(
+            "post-body",
+            vec![
+                ("url", &format!("{}/submit", server.uri())),
+                ("method", "POST"),
+                ("body", "hello world"),
+            ],
+        );
 
         let outcome = op.execute(&task).await.unwrap();
         match outcome {
@@ -259,9 +263,10 @@ mod tests {
             .await;
 
         let op = HttpOperative::for_types(&["http"]).unwrap();
-        let task = http_task("get-404", vec![
-            ("url", &format!("{}/missing", server.uri())),
-        ]);
+        let task = http_task(
+            "get-404",
+            vec![("url", &format!("{}/missing", server.uri()))],
+        );
 
         let outcome = op.execute(&task).await.unwrap();
         match outcome {
@@ -284,10 +289,13 @@ mod tests {
             .await;
 
         let op = HttpOperative::for_types(&["http"]).unwrap();
-        let task = http_task("with-headers", vec![
-            ("url", &format!("{}/auth", server.uri())),
-            ("headers", r#"{"authorization":"Bearer tok123"}"#),
-        ]);
+        let task = http_task(
+            "with-headers",
+            vec![
+                ("url", &format!("{}/auth", server.uri())),
+                ("headers", r#"{"authorization":"Bearer tok123"}"#),
+            ],
+        );
 
         let outcome = op.execute(&task).await.unwrap();
         match outcome {
@@ -312,9 +320,7 @@ mod tests {
             .await;
 
         let op = HttpOperative::for_types(&["http"]).unwrap();
-        let mut task = http_task("timeout", vec![
-            ("url", &format!("{}/slow", server.uri())),
-        ]);
+        let mut task = http_task("timeout", vec![("url", &format!("{}/slow", server.uri()))]);
         task.timeout_secs = Some(1);
 
         let err = op.execute(&task).await.unwrap_err();

@@ -1,14 +1,9 @@
 use gbe_jobs_domain::JobDefinition;
-use gbe_operative::{
-    run_job, CompositeOperative, DriverError, MoleculeOperative, ShellOperative,
-};
+use gbe_operative::{run_job, CompositeOperative, DriverError, MoleculeOperative, ShellOperative};
 use std::sync::Arc;
 
 fn load_fixture(name: &str) -> JobDefinition {
-    let path = format!(
-        "{}/fixtures/{name}",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    let path = format!("{}/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
     let yaml = std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
     let def: JobDefinition = serde_yaml::from_slice(&yaml).unwrap();
     def.validate().unwrap();
@@ -38,7 +33,7 @@ async fn linear_pipeline_captures_output() {
         gbe_jobs_domain::TaskOutcome::Completed { output, .. } => {
             assert_eq!(output, &["hello from greet"]);
         }
-        _ => panic!("expected Completed"),
+        gbe_jobs_domain::TaskOutcome::Failed { .. } => panic!("expected Completed"),
     }
 
     let count_output = &results[1].1;
@@ -46,7 +41,7 @@ async fn linear_pipeline_captures_output() {
         gbe_jobs_domain::TaskOutcome::Completed { output, .. } => {
             assert_eq!(output, &["one", "two", "three"]);
         }
-        _ => panic!("expected Completed"),
+        gbe_jobs_domain::TaskOutcome::Failed { .. } => panic!("expected Completed"),
     }
 }
 
@@ -124,7 +119,7 @@ async fn input_wiring_resolves_across_tasks() {
         gbe_jobs_domain::TaskOutcome::Completed { output, .. } => {
             assert_eq!(output, &["fetching https://example.com"]);
         }
-        _ => panic!("expected Completed"),
+        gbe_jobs_domain::TaskOutcome::Failed { .. } => panic!("expected Completed"),
     }
 }
 
@@ -133,7 +128,7 @@ async fn mixed_types_routed_through_composite() {
     let def = load_fixture("mixed-types.yaml");
     let shell = Arc::new(ShellOperative::for_types(&["shell"]).unwrap());
     let cmd = Arc::new(ShellOperative::for_types(&["cmd"]).unwrap());
-    let composite = Arc::new(CompositeOperative::from_operatives(vec![shell, cmd]));
+    let composite = Arc::new(CompositeOperative::from_operatives(&[shell, cmd]));
 
     let results = run_job(&def, composite).await.unwrap();
     let mut names: Vec<String> = results.iter().map(|(n, _)| n.clone()).collect();
@@ -143,10 +138,7 @@ async fn mixed_types_routed_through_composite() {
 
 #[tokio::test]
 async fn cli_exits_nonzero_on_failure() {
-    let fixture = format!(
-        "{}/fixtures/fail-fast.yaml",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    let fixture = format!("{}/fixtures/fail-fast.yaml", env!("CARGO_MANIFEST_DIR"));
     let bin = env!("CARGO_BIN_EXE_gbe-operative");
 
     let output = std::process::Command::new(bin)
@@ -166,9 +158,11 @@ async fn molecule_runs_inner_shell_pipeline() {
     let def = load_fixture("molecule.yaml");
     let shell = Arc::new(ShellOperative::for_types(&["shell"]).unwrap());
     let delegate: Arc<dyn gbe_operative::Operative> =
-        Arc::new(CompositeOperative::from_operatives(vec![shell.clone()]));
+        Arc::new(CompositeOperative::from_operatives(&[
+            shell.clone() as Arc<dyn gbe_operative::Operative>
+        ]));
     let molecule = Arc::new(MoleculeOperative::for_types(&["molecule"], delegate).unwrap());
-    let composite = Arc::new(CompositeOperative::from_operatives(vec![shell, molecule]));
+    let composite = Arc::new(CompositeOperative::from_operatives(&[shell, molecule]));
 
     let results = run_job(&def, composite).await.unwrap();
 
@@ -177,10 +171,7 @@ async fn molecule_runs_inner_shell_pipeline() {
     assert_eq!(names, vec!["finalize", "inner-pipeline", "setup"]);
 
     // Verify molecule task produced aggregated data
-    let mol_outcome = results
-        .iter()
-        .find(|(n, _)| n == "inner-pipeline")
-        .unwrap();
+    let mol_outcome = results.iter().find(|(n, _)| n == "inner-pipeline").unwrap();
     match &mol_outcome.1 {
         gbe_jobs_domain::TaskOutcome::Completed { data, output, .. } => {
             assert_eq!(output.len(), 2); // greet + count
@@ -188,6 +179,6 @@ async fn molecule_runs_inner_shell_pipeline() {
             assert!(data.get("greet").is_some());
             assert!(data.get("count").is_some());
         }
-        _ => panic!("expected Completed"),
+        gbe_jobs_domain::TaskOutcome::Failed { .. } => panic!("expected Completed"),
     }
 }

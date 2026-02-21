@@ -61,12 +61,12 @@ async fn main() -> ExitCode {
     // Two-phase construction: build shell+http as the molecule delegate,
     // then build the final composite with all three including molecule.
     let delegate: Arc<dyn gbe_operative::Operative> =
-        Arc::new(CompositeOperative::from_operatives(vec![
+        Arc::new(CompositeOperative::from_operatives(&[
             shell.clone(),
             http.clone(),
         ]));
     let molecule = Arc::new(MoleculeOperative::for_types(&["molecule"], delegate).unwrap());
-    let operative = Arc::new(CompositeOperative::from_operatives(vec![
+    let operative = Arc::new(CompositeOperative::from_operatives(&[
         shell, http, molecule,
     ]));
 
@@ -75,7 +75,9 @@ async fn main() -> ExitCode {
             info!(completed = results.len(), "all tasks completed");
             ExitCode::from(0)
         }
-        Err(DriverError::TaskFailed { task, exit_code, .. }) => {
+        Err(DriverError::TaskFailed {
+            task, exit_code, ..
+        }) => {
             error!(task, exit_code, "task failed");
             ExitCode::from(1)
         }
