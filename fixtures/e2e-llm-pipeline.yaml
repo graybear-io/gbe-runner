@@ -1,0 +1,26 @@
+v: 1
+name: "E2E LLM Pipeline"
+job_type: "mixed"
+tasks:
+  - name: "prepare-prompt"
+    task_type: "shell"
+    params:
+      command: "echo '{\"prompt\":\"List three primary colors\",\"context\":\"test\"}'"
+
+  - name: "generate"
+    task_type: "llm"
+    depends_on: ["prepare-prompt"]
+    input_from:
+      prompt: "prepare-prompt.prompt"
+    params:
+      model: "gpt-4o-mini"
+      temperature: "0"
+      max_tokens: "100"
+
+  - name: "verify-output"
+    task_type: "shell"
+    depends_on: ["generate"]
+    input_from:
+      LLM_RESPONSE: "generate.content"
+    params:
+      command: "test -n \"$LLM_RESPONSE\" && echo \"$LLM_RESPONSE\" | wc -w | tr -d ' '"

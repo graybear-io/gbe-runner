@@ -1,5 +1,7 @@
 use gbe_jobs_domain::JobDefinition;
-use gbe_operative::{run_job, CompositeOperative, DriverError, MoleculeOperative, ShellOperative};
+use gbe_operative::{
+    run_job, CompositeOperative, DriverError, LlmOperative, MoleculeOperative, ShellOperative,
+};
 use std::sync::Arc;
 
 fn load_fixture(name: &str) -> JobDefinition {
@@ -180,5 +182,48 @@ async fn molecule_runs_inner_shell_pipeline() {
             assert!(data.get("count").is_some());
         }
         gbe_jobs_domain::TaskOutcome::Failed { .. } => panic!("expected Completed"),
+    }
+}
+
+#[tokio::test]
+#[ignore] // requires LLM_API_URL env var
+async fn e2e_llm_pipeline() {
+    let base_url = match std::env::var("LLM_API_URL") {
+        Ok(url) => url,
+        Err(_) => return,
+    };
+
+    let shell = Arc::new(ShellOperative::for_types(&["shell"]).unwrap());
+    let llm: Arc<dyn gbe_operative::Operative> = Arc::new(LlmOperative::with_defaults(
+        vec![gbe_jobs_domain::TaskType::new("llm").unwrap()],
+        base_url,
+    ));
+    let composite = Arc::new(CompositeOperative::from_operatives(&[shell, llm]));
+
+    let def = load_fixture("e2e-llm-pipeline.yaml");
+    let results = run_job(&def, composite).await.unwrap();
+
+    let mut names: Vec<String> = results.iter().map(|(n, _)| n.clone()).collect();
+    names.sort();
+    assert_eq!(names, vec!["generate", "prepare-prompt", "verify-output"]);
+
+    // generate.data.content is non-empty
+    let generate = results.iter().find(|(n, _)| n == "generate").unwrap();
+    match &generate.1 {
+        gbe_jobs_domain::TaskOutcome::Completed { data, .. } => {
+            let content = data.as_ref().unwrap()["content"].as_str().unwrap();
+            assert!(!content.is_empty(), "LLM response should be non-empty");
+        }
+        gbe_jobs_domain::TaskOutcome::Failed { .. } => panic!("expected generate to complete"),
+    }
+
+    // verify-output completed (proves input_from resolved)
+    let verify = results.iter().find(|(n, _)| n == "verify-output").unwrap();
+    match &verify.1 {
+        gbe_jobs_domain::TaskOutcome::Completed { output, .. } => {
+            let word_count: u32 = output[0].parse().expect("should be a number");
+            assert!(word_count > 0, "LLM response should have words");
+        }
+        gbe_jobs_domain::TaskOutcome::Failed { .. } => panic!("expected verify-output to complete"),
     }
 }
