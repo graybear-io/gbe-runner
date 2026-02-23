@@ -9,7 +9,7 @@ pub mod operative;
 pub mod shell_operative;
 
 pub use composite_operative::CompositeOperative;
-pub use driver::{run_job, DriverError};
+pub use driver::{run_job, Driver, DriverError};
 pub use http_operative::HttpOperative;
 pub use llm_client::{LlmClient, OpenAiClient};
 pub use llm_operative::{LlmOperative, OpenAiClientFactory};
