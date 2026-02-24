@@ -3,7 +3,7 @@ use gbe_jobs_domain::{
     TaskParams,
 };
 use gbe_nexus::{dedup_id, EventEmitter};
-use gbe_oracle::SimpleOracle;
+use gbe_oracle::OracleDriver;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::task::JoinSet;
@@ -72,7 +72,13 @@ impl Driver {
         job_id: &JobId,
         org_id: &OrgId,
     ) -> Result<Vec<(String, TaskOutcome)>, DriverError> {
-        let mut oracle = SimpleOracle::new(def.clone())?;
+        let mut oracle = OracleDriver::new(
+            def.clone(),
+            job_id.clone(),
+            org_id.clone(),
+            self.emitter.clone(),
+        )?;
+        oracle.start().await;
         let mut join_set: JoinSet<TaskCompletion> = JoinSet::new();
         let mut results: Vec<(String, TaskOutcome)> = Vec::new();
         let mut outcome_data: HashMap<String, serde_json::Value> = HashMap::new();
@@ -112,11 +118,7 @@ impl Driver {
                             outcome_data.insert(completion.name.clone(), data);
                         }
 
-                        let newly_ready: Vec<_> = oracle
-                            .task_completed(&completion.name)
-                            .into_iter()
-                            .cloned()
-                            .collect();
+                        let newly_ready = oracle.task_completed(&completion.name).await;
                         results.push((completion.name, outcome.clone()));
 
                         for td in newly_ready {
@@ -136,14 +138,9 @@ impl Driver {
                         exit_code, error, ..
                     } => {
                         error!(task = %completion.name, exit_code, "task failed");
-                        self.emit_task_failed(
-                            &completion.name,
-                            def,
-                            job_id,
-                            error,
-                        )
-                        .await;
-                        oracle.task_failed(&completion.name);
+                        self.emit_task_failed(&completion.name, def, job_id, error)
+                            .await;
+                        oracle.task_failed(&completion.name).await;
                         join_set.abort_all();
                         return Err(DriverError::TaskFailed {
                             task: completion.name,
@@ -154,14 +151,9 @@ impl Driver {
                 },
                 Err(e) => {
                     error!(task = %completion.name, error = %e, "operative error");
-                    self.emit_task_failed(
-                        &completion.name,
-                        def,
-                        job_id,
-                        &e.to_string(),
-                    )
-                    .await;
-                    oracle.task_failed(&completion.name);
+                    self.emit_task_failed(&completion.name, def, job_id, &e.to_string())
+                        .await;
+                    oracle.task_failed(&completion.name).await;
                     join_set.abort_all();
                     return Err(DriverError::Execution {
                         task: completion.name,

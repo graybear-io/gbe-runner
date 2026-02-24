@@ -444,6 +444,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "gbe-jobs-domain",
+ "gbe-nexus",
+ "serde_json",
  "thiserror",
  "tracing",
 ]

@@ -43,7 +43,10 @@ fn build_emitter() -> Option<Arc<EventEmitter>> {
     None::<Arc<EventEmitter>>
 }
 
-fn spawn_heartbeat(emitter: Arc<EventEmitter>, start: std::time::Instant) -> tokio::task::JoinHandle<()> {
+fn spawn_heartbeat(
+    emitter: Arc<EventEmitter>,
+    start: std::time::Instant,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
         loop {
@@ -147,12 +150,10 @@ async fn main() -> ExitCode {
         None
     };
 
-    let job_id = JobId::new(&format!("job_{}", def.job_type)).unwrap_or_else(|_| {
-        JobId::new("job_unknown").expect("hardcoded valid id")
-    });
-    let org_id = OrgId::new(&cli.org_id).unwrap_or_else(|_| {
-        OrgId::new("org_default").expect("hardcoded valid id")
-    });
+    let job_id = JobId::new(&format!("job_{}", def.job_type))
+        .unwrap_or_else(|_| JobId::new("job_unknown").expect("hardcoded valid id"));
+    let org_id = OrgId::new(&cli.org_id)
+        .unwrap_or_else(|_| OrgId::new("org_default").expect("hardcoded valid id"));
 
     let driver = Driver::new(operative, emitter);
     let result = driver.run_job(&def, &job_id, &org_id).await;
